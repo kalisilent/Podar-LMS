@@ -56,6 +56,8 @@ export const authAPI = {
   changePassword: (data) => api.post("/auth/change-password/", data),
   adminDashboard: () => api.get("/auth/admin-dashboard/"),
   users: (params) => api.get("/auth/users/", { params }),
+  sendOTP: (data) => api.post("/auth/send-otp/", data),
+  verifyOTP: (data) => api.post("/auth/verify-otp/", data),
 };
 
 export const courseAPI = {

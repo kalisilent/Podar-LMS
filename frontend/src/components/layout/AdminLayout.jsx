@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, Users, BookOpen, X, Menu } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, X, Menu, Sparkles } from "lucide-react";
 import Navbar from "./Navbar";
 import clsx from "clsx";
+
+const AI_TOOLS_URL = "https://podarenterprise.com/lms1/podar-sim-lab/";
 
 const adminLinks = [
   { to: "/admin", icon: LayoutDashboard, label: "Dashboard" },
@@ -35,6 +37,21 @@ export default function AdminLayout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* AI Tools Button */}
+        <div className="p-3 border-t border-gray-800">
+          <a
+            href={AI_TOOLS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 shadow-md hover:shadow-lg"
+          >
+            <Sparkles size={18} />
+            AI Tools
+            <span className="ml-auto text-xs bg-white/20 px-2 py-0.5 rounded-full">New</span>
+          </a>
+        </div>
       </aside>
       <div className="flex-1 flex flex-col overflow-hidden">
         <Navbar onMenuClick={() => setOpen(true)} />

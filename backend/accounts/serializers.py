@@ -78,3 +78,14 @@ class AdminDashboardSerializer(serializers.Serializer):
     total_courses = serializers.IntegerField()
     total_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
     recent_enrollments = serializers.IntegerField()
+
+
+class SendOTPSerializer(serializers.Serializer):
+    """Request an OTP to be sent to the given email."""
+    email = serializers.EmailField()
+
+
+class VerifyOTPSerializer(serializers.Serializer):
+    """Verify an OTP and log in."""
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6, min_length=6)

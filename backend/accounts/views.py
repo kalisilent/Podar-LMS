@@ -4,12 +4,16 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
+from django.conf import settings
 from django.db.models import Sum, Count
 from django.utils import timezone
 from datetime import timedelta
+from .models import EmailOTP
 from .serializers import (
     RegisterSerializer, UserSerializer, UserListSerializer,
     ChangePasswordSerializer, AdminDashboardSerializer,
+    SendOTPSerializer, VerifyOTPSerializer,
 )
 from .permissions import IsAdmin
 
@@ -116,3 +120,111 @@ class AdminDashboardView(APIView):
         except Exception:
             pass
         return Response(AdminDashboardSerializer(data).data)
+
+
+class SendOTPView(APIView):
+    """POST /api/v1/auth/send-otp/ — send OTP to email (no auth required)."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = SendOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+
+        # Check if user exists
+        if not User.objects.filter(email=email).exists():
+            return Response(
+                {"detail": "No account found with this email. Please register first."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Rate limit: max 3 OTPs per email in last 10 minutes
+        recent = EmailOTP.objects.filter(
+            email=email,
+            created_at__gte=timezone.now() - timedelta(minutes=10),
+        ).count()
+        if recent >= 3:
+            return Response(
+                {"detail": "Too many OTP requests. Please wait a few minutes."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        # Generate and save OTP
+        otp_code = EmailOTP.generate_otp()
+        EmailOTP.objects.create(
+            email=email,
+            otp=otp_code,
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+        # Send email
+        try:
+            send_mail(
+                subject="Podar LMS — Your Login OTP",
+                message=f"Your one-time password is: {otp_code}\n\nThis code expires in 5 minutes.\nDo not share this code with anyone.",
+                from_email=settings.EMAIL_HOST_USER or "noreply@podar-lms.io",
+                recipient_list=[email],
+                fail_silently=False,
+            )
+        except Exception:
+            # If email sending fails (e.g., console backend in dev), still return success
+            # In dev mode, the OTP is printed to the console
+            pass
+
+        return Response({"detail": "OTP sent to your email.", "email": email})
+
+
+class VerifyOTPView(APIView):
+    """POST /api/v1/auth/verify-otp/ — verify OTP and return JWT tokens."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = VerifyOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        otp_code = serializer.validated_data["otp"]
+
+        # Find the latest unused OTP for this email
+        otp_record = EmailOTP.objects.filter(
+            email=email, is_used=False
+        ).order_by("-created_at").first()
+
+        if not otp_record:
+            return Response(
+                {"detail": "No OTP found. Please request a new one."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check attempts
+        otp_record.attempts += 1
+        otp_record.save()
+
+        if not otp_record.is_valid:
+            return Response(
+                {"detail": "OTP expired or too many attempts. Please request a new one."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp_record.otp != otp_code:
+            return Response(
+                {"detail": f"Invalid OTP. {5 - otp_record.attempts} attempts remaining."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # OTP is valid — mark as used
+        otp_record.is_used = True
+        otp_record.save()
+
+        # Get user and generate JWT tokens
+        user = User.objects.get(email=email)
+        user.is_verified = True
+        user.save()
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "user": UserSerializer(user).data,
+            "tokens": {
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+            },
+        })

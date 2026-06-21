@@ -11,4 +11,7 @@ urlpatterns = [
     path("users/", views.UserListView.as_view(), name="user-list"),
     path("users/<uuid:pk>/", views.UserDetailView.as_view(), name="user-detail"),
     path("admin-dashboard/", views.AdminDashboardView.as_view(), name="admin-dashboard"),
+    # OTP Authentication
+    path("send-otp/", views.SendOTPView.as_view(), name="send-otp"),
+    path("verify-otp/", views.VerifyOTPView.as_view(), name="verify-otp"),
 ]
