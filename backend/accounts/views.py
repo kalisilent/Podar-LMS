@@ -157,19 +157,43 @@ class SendOTPView(APIView):
             expires_at=timezone.now() + timedelta(minutes=5),
         )
 
-        # Send email
-        try:
-            send_mail(
-                subject="Podar LMS — Your Login OTP",
-                message=f"Your one-time password is: {otp_code}\n\nThis code expires in 5 minutes.\nDo not share this code with anyone.",
-                from_email=settings.EMAIL_HOST_USER or "noreply@podar-lms.io",
-                recipient_list=[email],
-                fail_silently=False,
-            )
-        except Exception:
-            # If email sending fails (e.g., console backend in dev), still return success
-            # In dev mode, the OTP is printed to the console
-            pass
+        # Send email via Resend API (HTTPS — works even when SMTP ports are blocked)
+        resend_api_key = getattr(settings, "RESEND_API_KEY", "")
+        email_sent = False
+
+        if resend_api_key:
+            try:
+                import resend
+                resend.api_key = resend_api_key
+                resend.Emails.send({
+                    "from": settings.RESEND_FROM_EMAIL or "Podar LMS <onboarding@resend.dev>",
+                    "to": [email],
+                    "subject": "Podar LMS — Your Login OTP",
+                    "html": f"""
+                        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+                            <h2 style="color: #1e40af;">Podar LMS</h2>
+                            <p>Your one-time password is:</p>
+                            <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2563eb;">{otp_code}</p>
+                            <p style="color: #6b7280; font-size: 14px;">This code expires in 5 minutes. Do not share this code with anyone.</p>
+                        </div>
+                    """,
+                })
+                email_sent = True
+            except Exception as e:
+                print(f"Resend API error: {e}")
+
+        # Fallback to Django's send_mail (works in local dev with console backend)
+        if not email_sent:
+            try:
+                send_mail(
+                    subject="Podar LMS — Your Login OTP",
+                    message=f"Your one-time password is: {otp_code}\n\nThis code expires in 5 minutes.\nDo not share this code with anyone.",
+                    from_email=settings.EMAIL_HOST_USER or "noreply@podar-lms.io",
+                    recipient_list=[email],
+                    fail_silently=True,
+                )
+            except Exception:
+                pass
 
         return Response({"detail": "OTP sent to your email.", "email": email})
 
